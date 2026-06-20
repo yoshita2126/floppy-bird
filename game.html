@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Document character encoding and title -->
+    <meta charset="UTF-8">
+    <title>🦅 Bird Dino Runner - SINGLE FRAME LAYOUT</title>
+    
+    <!-- CSS Styles for clean white background and centered canvas -->
+    <style>
+        /* Reset margins and center canvas vertically/horizontally */
+        body {
+            margin: 0;
+            background: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        
+        /* Canvas styling with border */
+        canvas {
+            border: 3px solid #333;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Main game canvas - 900x400 pixels -->
+    <canvas id="game" width="900" height="400"></canvas>
+
+    <script>
+        // ========== GAME SETUP ==========
+        // Get canvas and 2D context for drawing
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+
+        // Game constants for dimensions and boundaries
+        const W = canvas.width;        // Canvas width: 900px
+        const H = canvas.height;       // Canvas height: 400px
+        const SKY_TOP = 30;            // Bird ceiling boundary
+        const SKY_BOTTOM = 220;        // Bird floor boundary  
+        const GROUND_Y = 320;          // Ground starting Y position
+        const SKY = "#89CFF0";         // Light blue sky color
+        const GROUND = "#c68642";      // Brown ground color
+
+        // Game state variables
+        let score = 0;                             // Current game score
+        let highScore = localStorage.getItem("birdHighScore") || 0;  // Persistent high score
+        let started = false;                       // Game start flag
+        let gameOver = false;                      // Game over flag
+        let speed = 7;                             // Tree movement speed (increases over time)
+
+        // ========== BIRD CLASS ==========
+        class Bird {
+            constructor() {
+                // Position and size
+                this.x = 120;              // Fixed X position (bird doesn't move left/right)
+                this.y = 150;              // Starting Y position (center sky)
+                this.w = 55;               // Width: 55px
+                this.h = 45;               // Height: 45px
+                
+                // Physics
+                this.velY = 0;             // Vertical velocity
+                this.gravity = 0.45;       // Gravity strength per frame
+                this.normalJump = -9;      // Normal jump strength
+                this.powerJump = -16;      // Power jump strength (much stronger)
+                
+                // Animation
+                this.wingFrame = 0;        // Wing flap animation counter
+                this.flapTimer = 0;        // Wing flap duration timer
+                this.powerGlow = 0;        // Power jump glow effect timer
+            }
+
+            // Jump/flap function - handles both normal and power jumps
+            flap(isPowerJump = false) {
+                if (isPowerJump) {
+                    this.velY = this.powerJump;    // Apply strong upward velocity
+                    this.powerGlow = 20;           // Trigger golden glow effect
+                } else {
+                    this.velY = this.normalJump;   // Normal jump velocity
+                }
+                this.flapTimer = 20;               // Start wing animation
+            }
+
+            // Update bird physics and animation each frame
+            update() {
+                // Apply gravity
+                this.velY += this.gravity;
+                this.y += this.velY;
+
+                // Boundary collision (keep bird in sky zone)
+                if (this.y < SKY_TOP) {
+                    this.y = SKY_TOP;
+                    this.velY = 0;
+                }
+                if (this.y > SKY_BOTTOM) {
+                    this.y = SKY_BOTTOM;
+                    this.velY = 0;
+                }
+
+                // Wing flap animation
+                this.wingFrame += 0.4;
+                if (this.flapTimer > 0) {
+                    this.wingFrame += 0.6;     // Faster animation during flap
+                    this.flapTimer--;
+                }
+                if (this.powerGlow > 0) {
+                    this.powerGlow--;          // Fade power glow effect
+                }
+            }
+
+            // Collision rectangle for bird
+            rect() {
+                return { x: this.x, y: this.y, w: this.w, h: this.h };
+            }
+
+            // Draw animated bird facing right with wing flaps and glow
+            draw() {
+                const wingAngle = Math.sin(this.wingFrame) * 10;        // Wing flap angle
+                const flapIntensity = this.flapTimer > 0 ? 1.6 : 1;     // Size boost during flap
+                const glowIntensity = this.powerGlow / 20;               // Glow strength
+                
+                ctx.save();  // Save canvas state
+                ctx.translate(this.x + this.w/2, this.y + this.h/2);     // Center drawing origin
+                
+                // Power jump golden glow effect
+                if (glowIntensity > 0) {
+                    ctx.shadowColor = "#FFD700";    // Gold glow color
+                    ctx.shadowBlur = 20 * glowIntensity;
+                }
+                
+                // Bird body (brown/tan)
+                ctx.fillStyle = "#C4A484";
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 24 * flapIntensity, 18 * flapIntensity, 0, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Wing (animated flapping - same color as body)
+                ctx.fillStyle = "#C4A484";
+                ctx.beginPath();
+                ctx.ellipse(-10 + wingAngle * 0.4, 6 * flapIntensity, 28 * flapIntensity, 
+                           12 * flapIntensity, wingAngle * 0.15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Head (white)
+                ctx.fillStyle = "#FFFDD0";
+                ctx.beginPath();
+                ctx.arc(20 * flapIntensity, -3 * flapIntensity, 12 * flapIntensity, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Beak (orange - pointing RIGHT toward trees)
+                ctx.fillStyle = "#FF8C00";
+                ctx.beginPath();
+                ctx.moveTo(32 * flapIntensity, -3 * flapIntensity);
+                ctx.lineTo(44 * flapIntensity, -8 * flapIntensity);
+                ctx.lineTo(44 * flapIntensity, 2 * flapIntensity);
+                ctx.fill();
+                
+                // Eye white
+                ctx.fillStyle = "#FFFFFF";  // Sky blue eye
+                ctx.beginPath();
+                ctx.arc(26 * flapIntensity, -7 * flapIntensity, 5 * flapIntensity, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Eye pupil (black)
+                ctx.fillStyle = "black";
+                ctx.beginPath();
+                ctx.arc(28 * flapIntensity, -8 * flapIntensity, 2.5 * flapIntensity, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.shadowBlur = 0;  // Reset shadow
+                ctx.restore();       // Restore canvas state
+            }
+        }
+
+        // ========== TREE CLASS ==========
+        class Tree {
+            constructor(x) {
+                this.x = x;         // Starting X position (off-screen right)
+                this.w = 35;        // Tree width: 35px
+                this.h = 140;       // Tree height: 140px (smaller size)
+                this.y = GROUND_Y;  // Base Y position on ground
+            }
+
+            // Move tree left toward bird
+            update() {
+                this.x -= speed;   // Speed controlled by global game speed
+            }
+
+            // Collision rectangle for tree
+            rect() {
+                return {
+                    x: this.x,
+                    y: this.y - this.h,    // Top of tree (ground Y - height)
+                    w: this.w,
+                    h: this.h
+                };
+            }
+
+            // Draw detailed tree with trunk, 3-layer foliage, shadow, and emoji
+            draw() {
+                // Trunk with shadow
+                ctx.fillStyle = "#8B4513";  // Brown trunk
+                ctx.shadowColor = "rgba(0,0,0,0.3)";
+                ctx.shadowBlur = 6;
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 3;
+                ctx.fillRect(this.x + 8, this.y - 45, 19, 45);  // Trunk: 19x45px
+                ctx.shadowBlur = 0;
+                
+                // Top foliage layer (dark green)
+                ctx.fillStyle = "#228B22";
+                ctx.beginPath();
+                ctx.arc(this.x + 17, this.y - 115, 28, 0, Math.PI * 2);  // Top circle
+                ctx.fill();
+                
+                // Middle foliage layer (light green - 2 circles)
+                ctx.fillStyle = "#32CD32";
+                ctx.beginPath();
+                ctx.arc(this.x + 13, this.y - 95, 24, 0, Math.PI * 2);   // Left middle
+                ctx.arc(this.x + 21, this.y - 98, 22, 0, Math.PI * 2);   // Right middle
+                ctx.fill();
+                
+                // Bottom foliage layer (dark green)
+                ctx.fillStyle = "#228B22";
+                ctx.beginPath();
+                ctx.arc(this.x + 17, this.y - 75, 18, 0, Math.PI * 2);   // Bottom circle
+                ctx.fill();
+                
+                // Tree emoji overlay for extra detail
+                ctx.font = "45px Arial";
+                ctx.fillStyle = "#2E8B57";  // Dark green emoji
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("🌲", this.x + 17, this.y - 85);  // Centered on tree
+                ctx.textAlign = "left";
+                ctx.textBaseline = "alphabetic";
+            }
+        }
+
+        // ========== GLOBAL GAME OBJECTS ==========
+        const bird = new Bird();           // Create single bird instance
+        let trees = [];                    // Array of active trees
+        let spawnTimer = 0;                // Frame counter for tree spawning
+        let nextSpawn = 120;               // Frames until next tree group spawns
+
+        // ========== UTILITY FUNCTIONS ==========
+        // Generate random spawn interval (90-230 frames)
+        function randomGap() {
+            return 90 + Math.random() * 140;
+        }
+
+        // AABB collision detection between bird and tree
+        function collide(a, b) {
+            return (
+                a.x < b.x + b.w &&      // Bird right < Tree right
+                a.x + a.w > b.x &&      // Bird left < Tree right  
+                a.y < b.y + b.h &&      // Bird bottom < Tree bottom
+                a.y + a.h > b.y         // Bird top < Tree bottom
+            );
+        }
+
+        // Spawn 1-3 trees at random (groups of same height)
+        function spawnTrees() {
+            const count = Math.floor(Math.random() * 3) + 1;  // 1, 2, or 3 trees
+            let startX = W + 40;  // Start off-screen right
+
+            for (let i = 0; i < count; i++) {
+                trees.push(new Tree(startX + i * 55));  // 55px spacing between trees
+            }
+        }
+
+        // Reset game to initial state
+        function restart() {
+            started = false;           // Return to start screen
+            gameOver = false;
+            speed = 7;                 // Reset speed
+            score = 0;
+            trees = [];                // Clear all trees
+            bird.y = 150;              // Reset bird position
+            bird.velY = 0;
+            bird.powerGlow = 0;
+            spawnTimer = 0;
+            nextSpawn = randomGap();
+        }
+
+        // ========== MAIN GAME LOOP (60fps) ==========
+        function loop() {
+            // Clear entire canvas
+            ctx.clearRect(0, 0, W, H);
+
+            // Draw sky background (full canvas height)
+            ctx.fillStyle = SKY;
+            ctx.fillRect(0, 0, W, H);
+
+            // Draw ground (bottom section)
+            ctx.fillStyle = GROUND;
+            ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+            // ========== GAME UPDATE LOGIC ==========
+            if (started && !gameOver) {
+                // Update bird physics
+                bird.update();
+
+                // Tree spawning system
+                spawnTimer++;
+                if (spawnTimer > nextSpawn) {
+                    spawnTrees();          // Spawn new tree group
+                    spawnTimer = 0;
+                    nextSpawn = randomGap();
+                }
+
+                // Update all trees (move left)
+                trees.forEach(t => t.update());
+                
+                // Remove off-screen trees (left side)
+                trees = trees.filter(t => t.x > -80);
+
+                // Collision detection (bird vs each tree)
+                for (let t of trees) {
+                    if (collide(bird.rect(), t.rect())) {
+                        gameOver = true;
+                        // Update high score and save to localStorage
+                        highScore = Math.max(score, highScore);
+                        localStorage.setItem("birdHighScore", highScore);
+                    }
+                }
+
+                // Game progression
+                score++;                   // Increment score every frame
+                speed += 0.002;            // Gradually increase difficulty
+            }
+
+            // ========== RENDERING ==========
+            // Draw bird (always visible)
+            bird.draw();
+            
+            // Draw all active trees
+            trees.forEach(t => t.draw());
+
+            // ========== UI - GAME HUD ==========
+            ctx.fillStyle = "#000";        // Black text
+            ctx.font = "bold 22px Arial";
+            ctx.fillText("Score: " + score, 20, 35);     // Current score
+            ctx.font = "18px Arial";
+            ctx.fillText("High: " + highScore, 20, 60);  // High score
+
+            // ========== START SCREEN ==========
+            if (!started) {
+                // 1. Blue Frame Border (main visual element)
+                ctx.strokeStyle = "#000000";  // Black frame border
+                ctx.lineWidth = 8;
+                ctx.strokeRect(200, 80, 500, 260);  // Single centered frame
+
+                // White Background inside frame
+                ctx.fillStyle = "rgba(255,255,255,0.95)";
+                ctx.fillRect(204, 84, 492, 252);
+
+                // 2. "BIRD RUNNER" Title (Top Left - overlaps frame)
+                ctx.font = "bold 50px Arial";
+                ctx.fillStyle = "#FFBE00";         // Gold/yellow title
+                ctx.textAlign = "left";
+                ctx.textBaseline = "top";
+                ctx.fillText("BIRD RUNNER", 300, 90);  // Positioned outside top-left
+
+                // 3. 🦅 Eagle Icon (Left side inside frame)
+                ctx.font = "50px Arial";
+                ctx.fillStyle = "#C4A484";         // Brown eagle matches bird
+                ctx.textBaseline = "middle";
+                ctx.fillText("🦅", 230, 120);
+
+                // 4. "ONE CLICK =" (Red - Center Top)
+                ctx.font = "bold 32px Arial";
+                ctx.fillStyle = "#e74c3c";         // Red color
+                ctx.textAlign = "center";
+                ctx.textBaseline = "alphabetic";
+                ctx.fillText("ONE CLICK =", 450, 180);
+
+                // 5. "POWER JUMP" (Red - Center Middle)
+                ctx.font = "bold 32px Arial";
+                ctx.fillText("POWER JUMP", 450, 220);
+
+                // 6. "Fly over trees!" (Green - Center Lower)
+                ctx.font = "bold 26px Arial";
+                ctx.fillStyle = "#27ae60";         // Green color
+                ctx.fillText("Fly over trees!", 450, 250);
+
+                // 7. Controls (Dark Grey - Bottom Center)
+                ctx.font = "bold 22px Arial";
+                ctx.fillStyle = "#2c3e50";         // Dark grey
+                ctx.fillText("SPACE / CLICK / ↑", 450, 290);
+                
+                // Reset text alignment for other UI
+                ctx.textAlign = "left";
+            }
+
+            // ========== GAME OVER SCREEN ==========
+            if (gameOver) {
+                // Semi-transparent black overlay
+                ctx.fillStyle = "rgba(0,0,0,0.8)";
+                ctx.fillRect(0, 0, W, H);
+                
+                // Game over text (sky blue)
+                ctx.fillStyle = "#87CEEB";
+                ctx.font = "bold 52px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("🦅 GAME OVER", 450, 175);
+                
+                ctx.font = "bold 28px Arial";
+                ctx.fillText("FINAL: " + score, 450, 220);
+                ctx.font = "26px Arial";
+                ctx.fillText("HIGH: " + highScore, 450, 255);
+                ctx.font = "24px Arial";
+                ctx.fillText("🖱️ CLICK or SPACE to RESTART", 450, 295);
+                ctx.textAlign = "left";
+            }
+
+            // Request next frame (60fps)
+            requestAnimationFrame(loop);
+        }
+
+        // ========== INPUT HANDLERS ==========
+        // Keyboard controls (Space/Up Arrow)
+        addEventListener("keydown", e => {
+            if (e.repeat) return;  // Ignore key repeat
+            
+            if (e.code === "Space" || e.code === "ArrowUp") {
+                e.preventDefault();    // Prevent page scroll
+                if (!started) {
+                    started = true;    // Start game
+                } else if (gameOver) {
+                    restart();         // Restart game
+                } else {
+                    bird.flap(true);   // Power jump
+                }
+            }
+        });
+
+        // Mouse click controls (anywhere on canvas)
+        canvas.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (!started) {
+                started = true;        // Start game
+            } else if (gameOver) {
+                restart();             // Restart game
+            } else {
+                bird.flap(true);       // Power jump
+            }
+        });
+
+        // ========== START GAME ==========
+        loop();  // Begin main game loop
+    </script>
+</body>
+</html>
